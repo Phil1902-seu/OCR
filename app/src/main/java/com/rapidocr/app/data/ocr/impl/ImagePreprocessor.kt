@@ -1,8 +1,6 @@
 package com.rapidocr.app.data.ocr.impl
 
 import android.graphics.Bitmap
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 object ImagePreprocessor {
     private const val MEAN_R = 0.485f
@@ -12,42 +10,15 @@ object ImagePreprocessor {
     private const val STD_G = 0.224f
     private const val STD_B = 0.225f
 
-    fun bitmapToFloatArray(
-        bitmap: Bitmap,
+    fun bitmapToNormalized(
         targetWidth: Int,
-        targetHeight: Int,
-        normalize: Boolean = true
+        targetHeight: Int
     ): Pair<FloatArray, Bitmap> {
-        val resized = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
-        val width = resized.width
-        val height = resized.height
-        val pixels = IntArray(width * height)
-        resized.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val floatArray = FloatArray(3 * width * height)
-
-        for (i in pixels.indices) {
-            val pixel = pixels[i]
-            val r = ((pixel shr 16) and 0xFF).toFloat() / 255f
-            val g = ((pixel shr 8) and 0xFF).toFloat() / 255f
-            val b = (pixel and 0xFF).toFloat() / 255f
-
-            val idx = i * 3
-            if (normalize) {
-                floatArray[idx] = (r - MEAN_R) / STD_R
-                floatArray[idx + 1] = (g - MEAN_G) / STD_G
-                floatArray[idx + 2] = (b - MEAN_B) / STD_B
-            } else {
-                floatArray[idx] = r
-                floatArray[idx + 1] = g
-                floatArray[idx + 2] = b
-            }
-        }
-
-        return Pair(floatArray, resized)
+        val dummyBitmap = createDummyBitmap(targetWidth, targetHeight)
+        return bitmapToNormalized(dummyBitmap, targetWidth, targetHeight)
     }
 
-    fun bitmapToBgrFloatArray(
+    fun bitmapToNormalized(
         bitmap: Bitmap,
         targetWidth: Int,
         targetHeight: Int
@@ -63,14 +34,50 @@ object ImagePreprocessor {
         for (y in 0 until height) {
             for (x in 0 until width) {
                 val pixel = pixels[y * width + x]
-                val r = ((pixel shr 16) and 0xFF).toFloat()
-                val g = ((pixel shr 8) and 0xFF).toFloat()
-                val b = (pixel and 0xFF).toFloat()
+                val r = ((pixel shr 16) and 0xFF).toFloat() / 255f
+                val g = ((pixel shr 8) and 0xFF).toFloat() / 255f
+                val b = (pixel and 0xFF).toFloat() / 255f
 
-                val idx = (y * width + x) * 3
-                floatArray[idx] = (b - 127.5f) / 127.5f
-                floatArray[idx + 1] = (g - 127.5f) / 127.5f
-                floatArray[idx + 2] = (r - 127.5f) / 127.5f
+                val chwIdxR = 0 * height * width + y * width + x
+                val chwIdxG = 1 * height * width + y * width + x
+                val chwIdxB = 2 * height * width + y * width + x
+
+                floatArray[chwIdxR] = (r - MEAN_R) / STD_R
+                floatArray[chwIdxG] = (g - MEAN_G) / STD_G
+                floatArray[chwIdxB] = (b - MEAN_B) / STD_B
+            }
+        }
+
+        return Pair(floatArray, resized)
+    }
+
+    fun bitmapToBgr(
+        bitmap: Bitmap,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Pair<FloatArray, Bitmap> {
+        val resized = Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+        val width = resized.width
+        val height = resized.height
+        val pixels = IntArray(width * height)
+        resized.getPixels(pixels, 0, width, 0, 0, width, height)
+
+        val floatArray = FloatArray(3 * height * width)
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val pixel = pixels[y * width + x]
+                val r = ((pixel shr 16) and 0xFF).toFloat() / 255f
+                val g = ((pixel shr 8) and 0xFF).toFloat() / 255f
+                val b = (pixel and 0xFF).toFloat() / 255f
+
+                val chwIdxR = 0 * height * width + y * width + x
+                val chwIdxG = 1 * height * width + y * width + x
+                val chwIdxB = 2 * height * width + y * width + x
+
+                floatArray[chwIdxR] = (r - MEAN_R) / STD_R
+                floatArray[chwIdxG] = (g - MEAN_G) / STD_G
+                floatArray[chwIdxB] = (b - MEAN_B) / STD_B
             }
         }
 
@@ -88,5 +95,11 @@ object ImagePreprocessor {
             }
         }
         return chw
+    }
+
+    private fun createDummyBitmap(width: Int, height: Int): Bitmap {
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.WHITE)
+        }
     }
 }

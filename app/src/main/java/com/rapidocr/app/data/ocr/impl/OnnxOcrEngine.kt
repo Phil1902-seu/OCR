@@ -9,6 +9,8 @@ import ai.onnxruntime.OrtSession
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
+import kotlin.math.max
+import kotlin.math.min
 
 class OnnxOcrEngine(private val context: Context) {
 
@@ -16,6 +18,7 @@ class OnnxOcrEngine(private val context: Context) {
     private var recSession: OrtSession? = null
     private var clsSession: OrtSession? = null
     private val ortEnv = OrtEnvironment.getEnvironment()
+    private var dictionary: List<String> = emptyList()
 
     data class TextBox(
         val points: FloatArray,
@@ -31,6 +34,8 @@ class OnnxOcrEngine(private val context: Context) {
 
     fun initialize(modelDir: String): Boolean {
         return try {
+            dictionary = loadDictionary()
+
             val detFile = copyAssetToCache("models/PP-OCRv6_det_small.onnx", modelDir)
             val recFile = copyAssetToCache("models/PP-OCRv6_rec_small.onnx", modelDir)
             val clsFile = copyAssetToCache("models/ch_ppocr_mobile_v2.0_cls_mobile.onnx", modelDir)
@@ -40,10 +45,11 @@ class OnnxOcrEngine(private val context: Context) {
                 setIntraOpNumThreads(4)
             }
 
-            detSession = ortEnv.createSession(detFile.absolutePath, sessionOptions)
-            recSession = ortEnv.createSession(recFile.absolutePath, sessionOptions)
-            clsSession = ortEnv.createSession(clsFile.absolutePath, sessionOptions)
-            true
+            detSession = if (detFile.exists()) ortEnv.createSession(detFile.absolutePath, sessionOptions) else null
+            recSession = if (recFile.exists()) ortEnv.createSession(recFile.absolutePath, sessionOptions) else null
+            clsSession = if (clsFile.exists()) ortEnv.createSession(clsFile.absolutePath, sessionOptions) else null
+
+            detSession != null && recSession != null
         } catch (e: Exception) {
             false
         }
@@ -52,16 +58,12 @@ class OnnxOcrEngine(private val context: Context) {
     fun recognize(bitmap: Bitmap): OcrResult {
         val startTime = System.currentTimeMillis()
 
-        val (inputData, resized) = ImagePreprocessor.bitmapToBgrFloatArray(bitmap, 640, 640)
-        val chwData = ImagePreprocessor.hwcToChw(inputData, 640, 640)
-
-        val detBoxes = runDetection(chwData, 640, 640, bitmap.width, bitmap.height)
-
+        val detBoxes = runDetection(bitmap)
         val results = detBoxes.mapNotNull { box ->
             val cropped = cropBitmap(bitmap, box)
             if (cropped != null) {
-                val text = runRecognition(cropped)
-                TextBox(box, text.first, text.second)
+                val (text, conf) = runRecognition(cropped)
+                TextBox(box, text, conf)
             } else {
                 null
             }
@@ -73,28 +75,42 @@ class OnnxOcrEngine(private val context: Context) {
         return OcrResult(results, fullText, elapsed)
     }
 
-    private fun runDetection(inputData: FloatArray, inputH: Int, inputW: Int, origW: Int, origH: Int): List<FloatArray> {
-        val session = detSession ?: return emptyList()
+    private fun runDetection(bitmap: Bitmap): List<FloatArray> {
+        val session = detSession ?: return getDefaultBox(bitmap)
 
         return try {
-            val shape = longArrayOf(1, 3, inputH.toLong(), inputW.toLong())
-            val buffer = FloatBuffer.wrap(inputData)
+            val maxSide = 960
+            val scale = if (bitmap.width > bitmap.height) {
+                maxSide.toFloat() / bitmap.width
+            } else {
+                maxSide.toFloat() / bitmap.height
+            }
+            val targetW = (bitmap.width * scale).toInt().let { (it / 32) * 32 }
+            val targetH = (bitmap.height * scale).toInt().let { (it / 32) * 32 }
+
+            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(targetW, targetH)
+            val chwData = ImagePreprocessor.hwcToChw(inputData, targetH, targetW)
+
+            val shape = longArrayOf(1, 3, targetH.toLong(), targetW.toLong())
+            val buffer = FloatBuffer.wrap(chwData)
+
             val inputTensor = OnnxTensor.createTensor(ortEnv, buffer, shape)
 
-            val outputs = session.run(mapOf("input" to inputTensor))
-            val outputTensor = outputs[0] as? OnnxTensor ?: return emptyList()
-            val outputData = outputTensor.floatBuffer
+            val inputName = session.inputNames.first()
+            val outputs = session.run(mapOf(inputName to inputTensor))
+            val outputTensor = outputs[0] as? OnnxTensor ?: return getDefaultBox(bitmap)
+            val outputBuffer = outputTensor.floatBuffer
 
-            val outputArray = FloatArray(outputData.remaining())
-            outputData.get(outputArray)
+            val outputArray = FloatArray(outputBuffer.remaining())
+            outputBuffer.get(outputArray)
 
             inputTensor.close()
             outputTensor.close()
             outputs.close()
 
-            postProcessDetection(outputArray, inputW, inputH, origW, origH)
+            postProcessDetection(outputArray, targetW, targetH, bitmap.width, bitmap.height)
         } catch (e: OrtException) {
-            emptyList()
+            getDefaultBox(bitmap)
         }
     }
 
@@ -106,33 +122,106 @@ class OnnxOcrEngine(private val context: Context) {
         origH: Int
     ): List<FloatArray> {
         val threshold = 0.3f
-        val boxes = mutableListOf<FloatArray>()
+        val minSize = 3
 
+        val segmentation = Array(modelH) { FloatArray(modelW) }
+        for (y in 0 until modelH) {
+            for (x in 0 until modelW) {
+                segmentation[y][x] = data[y * modelW + x]
+            }
+        }
+
+        val boxes = mutableListOf<FloatArray>()
         val scaleX = origW.toFloat() / modelW
         val scaleY = origH.toFloat() / modelH
 
+        val visited = Array(modelH) { BooleanArray(modelW) }
         for (y in 0 until modelH) {
             for (x in 0 until modelW) {
-                if (data[y * modelW + x] > threshold) {
-                    val x1 = (x * scaleX).coerceIn(0f, origW.toFloat())
-                    val y1 = (y * scaleY).coerceIn(0f, origH.toFloat())
-                    val x2 = ((x + 20) * scaleX).coerceIn(0f, origW.toFloat())
-                    val y2 = ((y + 10) * scaleY).coerceIn(0f, origH.toFloat())
-                    boxes.add(floatArrayOf(x1, y1, x2, y1, x2, y2, x1, y2))
+                if (!visited[y][x] && segmentation[y][x] > threshold) {
+                    val region = floodFill(segmentation, visited, x, y, modelW, modelH, threshold)
+                    if (region.size >= minSize) {
+                        val bbox = computeBoundingBox(region, scaleX, scaleY, origW, origH)
+                        if (bbox != null) {
+                            boxes.add(bbox)
+                        }
+                    }
                 }
             }
         }
 
         if (boxes.isEmpty()) {
-            boxes.add(floatArrayOf(
-                10f, 10f,
-                (origW - 10).toFloat(), 10f,
-                (origW - 10).toFloat(), (origH - 10).toFloat(),
-                10f, (origH - 10).toFloat()
-            ))
+            return getDefaultBox(Bitmap.createBitmap(origW, origH, Bitmap.Config.ARGB_8888))
         }
 
         return boxes
+    }
+
+    private fun floodFill(
+        segmentation: Array<FloatArray>,
+        visited: Array<BooleanArray>,
+        startX: Int,
+        startY: Int,
+        width: Int,
+        height: Int,
+        threshold: Float
+    ): List<Pair<Int, Int>> {
+        val region = mutableListOf<Pair<Int, Int>>()
+        val queue = ArrayDeque<Pair<Int, Int>>()
+        queue.add(Pair(startX, startY))
+        visited[startY][startX] = true
+
+        while (queue.isNotEmpty()) {
+            val (x, y) = queue.removeFirst()
+            region.add(Pair(x, y))
+
+            for (dy in -1..1) {
+                for (dx in -1..1) {
+                    if (dx == 0 && dy == 0) continue
+                    val nx = x + dx
+                    val ny = y + dy
+                    if (nx in 0 until width && ny in 0 until height &&
+                        !visited[ny][nx] && segmentation[ny][nx] > threshold
+                    ) {
+                        visited[ny][nx] = true
+                        queue.add(Pair(nx, ny))
+                    }
+                }
+            }
+        }
+        return region
+    }
+
+    private fun computeBoundingBox(
+        region: List<Pair<Int, Int>>,
+        scaleX: Float,
+        scaleY: Float,
+        origW: Int,
+        origH: Int
+    ): FloatArray? {
+        if (region.isEmpty()) return null
+
+        val minX = region.minOf { it.first }
+        val maxX = region.maxOf { it.first }
+        val minY = region.minOf { it.second }
+        val maxY = region.maxOf { it.second }
+
+        val x1 = (minX * scaleX).coerceIn(0f, origW.toFloat() - 1)
+        val y1 = (minY * scaleY).coerceIn(0f, origH.toFloat() - 1)
+        val x2 = ((maxX + 1) * scaleX).coerceIn(0f, origW.toFloat())
+        val y2 = ((maxY + 1) * scaleY).coerceIn(0f, origH.toFloat())
+
+        return floatArrayOf(x1, y1, x2, y1, x2, y2, x1, y2)
+    }
+
+    private fun getDefaultBox(bitmap: Bitmap): List<FloatArray> {
+        val margin = 10f
+        return listOf(floatArrayOf(
+            margin, margin,
+            (bitmap.width - margin), margin,
+            (bitmap.width - margin), (bitmap.height - margin),
+            margin, (bitmap.height - margin)
+        ))
     }
 
     private fun runRecognition(cropped: Bitmap): Pair<String, Float> {
@@ -140,18 +229,21 @@ class OnnxOcrEngine(private val context: Context) {
 
         return try {
             val targetH = 48
-            val targetW = cropped.width * targetH / cropped.height
-            val (inputData, _) = ImagePreprocessor.bitmapToBgrFloatArray(cropped, targetW, targetH)
+            val aspectRatio = cropped.width.toFloat() / cropped.height
+            val targetW = max(48, (targetH * aspectRatio).toInt()).let { (it / 4) * 4 }
+
+            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(targetW, targetH)
             val chwData = ImagePreprocessor.hwcToChw(inputData, targetH, targetW)
 
             val shape = longArrayOf(1, 3, targetH.toLong(), targetW.toLong())
             val buffer = FloatBuffer.wrap(chwData)
             val inputTensor = OnnxTensor.createTensor(ortEnv, buffer, shape)
 
-            val outputs = session.run(mapOf("input" to inputTensor))
+            val inputName = session.inputNames.first()
+            val outputs = session.run(mapOf(inputName to inputTensor))
             val outputTensor = outputs[0] as? OnnxTensor ?: return Pair("", 0f)
-            val outputData = outputTensor.floatBuffer
 
+            val outputData = outputTensor.floatBuffer
             val outputArray = FloatArray(outputData.remaining())
             outputData.get(outputArray)
 
@@ -159,38 +251,53 @@ class OnnxOcrEngine(private val context: Context) {
             outputTensor.close()
             outputs.close()
 
-            decodeRecognitionOutput(outputArray)
+            decodeCTC(outputArray)
         } catch (e: OrtException) {
             Pair("", 0f)
         }
     }
 
-    private fun decodeRecognitionOutput(data: FloatArray): Pair<String, Float> {
-        val dict = getDictionary()
-        val text = StringBuilder()
-        var maxConf = 0f
-        var count = 0
+    private fun decodeCTC(data: FloatArray): Pair<String, Float> {
+        val dict = dictionary
+        if (dict.isEmpty()) return Pair("", 0f)
 
-        val seqLen = data.size / dict.size
+        val numClasses = dict.size
+        val seqLen = data.size / numClasses
+        val text = StringBuilder()
+        var totalConf = 0f
+        var charCount = 0
+        var prevIdx = 0
+
         for (t in 0 until seqLen) {
             var maxIdx = 0
             var maxVal = -Float.MAX_VALUE
-            for (c in dict.indices) {
-                val val_ = data[t * dict.size + c]
-                if (val_ > maxVal) {
-                    maxVal = val_
+            for (c in 0 until numClasses) {
+                val value = data[t * numClasses + c]
+                if (value > maxVal) {
+                    maxVal = value
                     maxIdx = c
                 }
             }
-            if (maxIdx > 0 && maxIdx < dict.size) {
+
+            if (maxIdx > 0 && maxIdx != prevIdx && maxIdx < numClasses) {
                 text.append(dict[maxIdx])
-                maxConf += maxVal
-                count++
+                totalConf += maxVal
+                charCount++
             }
+            prevIdx = maxIdx
         }
 
-        val conf = if (count > 0) maxConf / count else 0f
-        return Pair(text.toString(), conf)
+        val avgConf = if (charCount > 0) totalConf / charCount else 0f
+        return Pair(text.toString(), avgConf)
+    }
+
+    private fun loadDictionary(): List<String> {
+        return try {
+            context.assets.open("dict/ppocr_keys_v1.txt").bufferedReader().readLines()
+        } catch (e: Exception) {
+            listOf("blank") + ('a'..'z').map { it.toString() } +
+                ('A'..'Z').map { it.toString() } + ('0'..'9').map { it.toString() }
+        }
     }
 
     private fun cropBitmap(bitmap: Bitmap, box: FloatArray): Bitmap? {
@@ -211,32 +318,18 @@ class OnnxOcrEngine(private val context: Context) {
 
     private fun copyAssetToCache(assetPath: String, destDir: String): File {
         val destFile = File(destDir, assetPath.substringAfterLast("/"))
-        if (destFile.exists()) return destFile
+        if (destFile.exists() && destFile.length() > 100) return destFile
 
         destFile.parentFile?.mkdirs()
-        context.assets.open(assetPath).use { input ->
-            FileOutputStream(destFile).use { output ->
-                input.copyTo(output)
+        try {
+            context.assets.open(assetPath).use { input ->
+                FileOutputStream(destFile).use { output ->
+                    input.copyTo(output)
+                }
             }
+        } catch (e: Exception) {
         }
         return destFile
-    }
-
-    private fun getDictionary(): List<String> {
-        val dict = mutableListOf<String>()
-        dict.add("blank")
-        for (c in 'a'..'z') dict.add(c.toString())
-        for (c in 'A'..'Z') dict.add(c.toString())
-        for (c in '0'..'9') dict.add(c.toString())
-        dict.addAll(listOf(
-            "一", "二", "三", "四", "五", "六", "七", "八", "九", "十",
-            "的", "是", "在", "了", "和", "有", "这", "我", "他", "她",
-            "你", "们", "来", "去", "好", "不", "大", "小", "中", "上",
-            "下", "出", "入", "人", "口", "手", "日", "月", "水", "火",
-            "山", "石", "田", "土", "天", "地", "时", "分", "秒", "年",
-            "说", "看", "想", "做", "吃", "喝", "买", "卖", "开", "关"
-        ))
-        return dict
     }
 
     fun release() {
