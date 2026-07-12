@@ -34,8 +34,13 @@ class OcrRepository @Inject constructor(
             )
         }
 
-        initialized = engine.initialize(modelDir, config)
-        return initialized
+        val initResult = withContext(Dispatchers.IO) {
+            engine.initialize(modelDir, config)
+        }
+        if (initResult) {
+            initialized = true
+        }
+        return initResult
     }
 
     suspend fun recognize(bitmap: Bitmap): Result<OcrResult> {

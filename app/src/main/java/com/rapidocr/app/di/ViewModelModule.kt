@@ -21,7 +21,7 @@ class ViewModelFactory @Inject constructor(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         return when {
             modelClass.isAssignableFrom(OcrViewModel::class.java) ->
-                OcrViewModel(recognizeTextUseCase) as T
+                OcrViewModel(recognizeTextUseCase, historyUseCase) as T
             modelClass.isAssignableFrom(HistoryViewModel::class.java) ->
                 HistoryViewModel(historyUseCase) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->

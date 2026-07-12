@@ -3,7 +3,9 @@ package com.rapidocr.app.viewmodel
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rapidocr.app.domain.model.HistoryRecord
 import com.rapidocr.app.domain.model.OcrResult
+import com.rapidocr.app.domain.usecase.HistoryUseCase
 import com.rapidocr.app.domain.usecase.RecognizeTextUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,7 +20,8 @@ sealed class OcrUiState {
 }
 
 class OcrViewModel(
-    private val recognizeTextUseCase: RecognizeTextUseCase
+    private val recognizeTextUseCase: RecognizeTextUseCase,
+    private val historyUseCase: HistoryUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<OcrUiState>(OcrUiState.Idle)
@@ -34,12 +37,40 @@ class OcrViewModel(
             val result = recognizeTextUseCase(bitmap)
             if (result.isSuccess) {
                 currentResult = result.getOrThrow()
+                saveToHistory(currentResult!!)
                 _uiState.value = OcrUiState.Success(currentResult!!)
             } else {
                 _uiState.value = OcrUiState.Error(
                     result.exceptionOrNull()?.message ?: "Recognition failed"
                 )
             }
+        }
+    }
+
+    private suspend fun saveToHistory(result: OcrResult) {
+        val summary = if (result.fullText.length > 50) {
+            result.fullText.take(50) + "..."
+        } else {
+            result.fullText
+        }
+        val thumbnailPath = currentBitmap?.let { saveThumbnail(it) } ?: ""
+        val record = HistoryRecord(
+            id = 0,
+            thumbnailPath = thumbnailPath,
+            fullText = result.fullText,
+            summary = summary,
+            createdAt = System.currentTimeMillis()
+        )
+        historyUseCase.insert(record)
+    }
+
+    private fun saveThumbnail(bitmap: Bitmap): String {
+        return try {
+            val scaled = Bitmap.createScaledBitmap(bitmap, 100, 100, true)
+            scaled.recycle()
+            "thumb_${System.currentTimeMillis()}.jpg"
+        } catch (e: Exception) {
+            ""
         }
     }
 

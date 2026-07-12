@@ -59,11 +59,25 @@ class OnnxOcrEngine(private val context: Context) {
         val startTime = System.currentTimeMillis()
 
         val detBoxes = runDetection(bitmap)
-        val results = detBoxes.mapNotNull { box ->
+
+        val sortedBoxes = detBoxes.sortedBy { box ->
+            val yCenter = (box[1] + box[5]) / 2
+            val xCenter = (box[0] + box[2]) / 2
+            val rowThreshold = 30f
+            val row = (yCenter / rowThreshold).toInt()
+            row * 10000 + xCenter.toInt()
+        }
+
+        val results = sortedBoxes.mapNotNull { box ->
             val cropped = cropBitmap(bitmap, box)
             if (cropped != null) {
-                val (text, conf) = runRecognition(cropped)
-                TextBox(box, text, conf)
+                val rotated = runClassification(cropped)
+                val (text, conf) = runRecognition(rotated)
+                if (text.isNotBlank()) {
+                    TextBox(box, text, conf)
+                } else {
+                    null
+                }
             } else {
                 null
             }
@@ -88,8 +102,8 @@ class OnnxOcrEngine(private val context: Context) {
             val targetW = (bitmap.width * scale).toInt().let { (it / 32) * 32 }
             val targetH = (bitmap.height * scale).toInt().let { (it / 32) * 32 }
 
-            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(targetW, targetH)
-            val chwData = ImagePreprocessor.hwcToChw(inputData, targetH, targetW)
+            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(bitmap, targetW, targetH)
+            val chwData = inputData
 
             val shape = longArrayOf(1, 3, targetH.toLong(), targetW.toLong())
             val buffer = FloatBuffer.wrap(chwData)
@@ -232,8 +246,8 @@ class OnnxOcrEngine(private val context: Context) {
             val aspectRatio = cropped.width.toFloat() / cropped.height
             val targetW = max(48, (targetH * aspectRatio).toInt()).let { (it / 4) * 4 }
 
-            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(targetW, targetH)
-            val chwData = ImagePreprocessor.hwcToChw(inputData, targetH, targetW)
+            val (inputData, _) = ImagePreprocessor.bitmapToNormalized(cropped, targetW, targetH)
+            val chwData = inputData
 
             val shape = longArrayOf(1, 3, targetH.toLong(), targetW.toLong())
             val buffer = FloatBuffer.wrap(chwData)
@@ -255,6 +269,50 @@ class OnnxOcrEngine(private val context: Context) {
         } catch (e: OrtException) {
             Pair("", 0f)
         }
+    }
+
+    private fun runClassification(cropped: Bitmap): Bitmap {
+        val session = clsSession ?: return cropped
+
+        return try {
+            val targetH = 48
+            val targetW = 192
+            val (inputData, _) = ImagePreprocessor.bitmapToBgr(cropped, targetW, targetH)
+            val chwData = inputData
+
+            val shape = longArrayOf(1, 3, targetH.toLong(), targetW.toLong())
+            val buffer = FloatBuffer.wrap(chwData)
+            val inputTensor = OnnxTensor.createTensor(ortEnv, buffer, shape)
+
+            val inputName = session.inputNames.first()
+            val outputs = session.run(mapOf(inputName to inputTensor))
+            val outputTensor = outputs[0] as? OnnxTensor ?: return cropped
+
+            val outputData = outputTensor.floatBuffer
+            val outputArray = FloatArray(outputData.remaining())
+            outputData.get(outputArray)
+
+            inputTensor.close()
+            outputTensor.close()
+            outputs.close()
+
+            val labelIdx = if (outputArray.size >= 2) {
+                if (outputArray[0] > outputArray[1]) 0 else 1
+            } else 0
+
+            if (labelIdx == 1) {
+                rotateBitmap(cropped)
+            } else {
+                cropped
+            }
+        } catch (e: OrtException) {
+            cropped
+        }
+    }
+
+    private fun rotateBitmap(bitmap: Bitmap): Bitmap {
+        val matrix = android.graphics.Matrix().apply { postRotate(180f) }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
     private fun decodeCTC(data: FloatArray): Pair<String, Float> {

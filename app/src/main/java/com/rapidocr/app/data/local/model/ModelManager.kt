@@ -38,28 +38,37 @@ class ModelManager @Inject constructor(
 
     fun copyModelFromAssets(type: ModelType): String {
         val modelDir = File(context.filesDir, "models/${type.name.lowercase()}")
-        if (modelDir.exists() && modelDir.listFiles()?.size ?: 0 >= 3) {
+        val existingFiles = modelDir.listFiles()?.filter { it.length() > 100 } ?: emptyList()
+        if (existingFiles.size >= 3) {
             return modelDir.absolutePath
         }
 
         modelDir.mkdirs()
         val modelFiles = getModelFilesForType(type)
+        var successCount = 0
 
-        try {
-            for (modelFile in modelFiles) {
-                val assetPath = "models/$modelFile"
-                val outputFile = File(modelDir, modelFile)
+        for (modelFile in modelFiles) {
+            val assetPath = "models/$modelFile"
+            val outputFile = File(modelDir, modelFile)
 
+            try {
                 context.assets.open(assetPath).use { input ->
-                    outputFile.outputStream().use { output ->
-                        input.copyTo(output)
+                    val bytes = input.readBytes()
+                    if (bytes.size > 100) {
+                        outputFile.outputStream().use { output ->
+                            output.write(bytes)
+                        }
+                        successCount++
                     }
                 }
+            } catch (e: Exception) {
+                if (outputFile.length() > 100) {
+                    successCount++
+                }
             }
-            return modelDir.absolutePath
-        } catch (e: Exception) {
-            return ""
         }
+
+        return if (successCount >= 3) modelDir.absolutePath else ""
     }
 
     fun isModelReady(type: ModelType): Boolean {
