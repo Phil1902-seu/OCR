@@ -39,7 +39,7 @@ class ModelManager @Inject constructor(
     fun copyModelFromAssets(type: ModelType): String {
         val modelDir = File(context.filesDir, "models/${type.name.lowercase()}")
         val existingFiles = modelDir.listFiles()?.filter { it.length() > 100 } ?: emptyList()
-        if (existingFiles.size >= 3) {
+        if (existingFiles.size >= 2) {
             return modelDir.absolutePath
         }
 
@@ -68,12 +68,12 @@ class ModelManager @Inject constructor(
             }
         }
 
-        return if (successCount >= 3) modelDir.absolutePath else ""
+        return if (successCount >= 2) modelDir.absolutePath else ""
     }
 
     fun isModelReady(type: ModelType): Boolean {
         val modelDir = File(context.filesDir, "models/${type.name.lowercase()}")
-        return modelDir.exists() && (modelDir.listFiles()?.size ?: 0) >= 3
+        return modelDir.exists() && (modelDir.listFiles()?.count { it.length() > 100 } ?: 0) >= 2
     }
 
     private fun getModelFilesForType(type: ModelType): List<String> {
