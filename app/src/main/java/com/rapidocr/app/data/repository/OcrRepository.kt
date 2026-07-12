@@ -1,0 +1,60 @@
+package com.rapidocr.app.data.repository
+
+import android.graphics.Bitmap
+import com.rapidocr.app.data.ocr.OcrConfig
+import com.rapidocr.app.data.ocr.RapidOcrEngine
+import com.rapidocr.app.data.local.model.ModelManager
+import com.rapidocr.app.domain.model.ModelType
+import com.rapidocr.app.domain.model.OcrResult
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class OcrRepository @Inject constructor(
+    private val engine: RapidOcrEngine,
+    private val modelManager: ModelManager
+) {
+    private var initialized = false
+
+    suspend fun initialize(): Boolean {
+        if (initialized) return true
+
+        val modelType = modelManager.getCurrentModelType()
+        val modelDir = modelManager.copyModelFromAssets(modelType)
+        if (modelDir.isEmpty()) return false
+
+        val config = when (modelType) {
+            ModelType.SMALL -> OcrConfig()
+            ModelType.STANDARD -> OcrConfig(
+                detectionModel = "PP-OCRv6_det.onnx",
+                classificationModel = "ch_ppocr_mobile_v2.0_cls.onnx",
+                recognitionModel = "PP-OCRv6_rec.onnx"
+            )
+        }
+
+        initialized = engine.initialize(modelDir, config)
+        return initialized
+    }
+
+    suspend fun recognize(bitmap: Bitmap): Result<OcrResult> {
+        if (!initialized) {
+            initialize()
+        }
+        return withContext(Dispatchers.Default) {
+            try {
+                val result = engine.recognize(bitmap)
+                if (result != null) {
+                    Result.success(result)
+                } else {
+                    Result.failure(Exception("OCR recognition returned null"))
+                }
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    fun isEngineReady(): Boolean = initialized
+}
