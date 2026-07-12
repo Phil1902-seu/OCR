@@ -55,10 +55,16 @@ class OnnxOcrEngine(private val context: Context) {
         }
     }
 
-    fun recognize(bitmap: Bitmap): OcrResult {
+    fun recognize(bitmap: Bitmap, rotationDegrees: Int = 0): OcrResult {
         val startTime = System.currentTimeMillis()
 
-        val detBoxes = runDetection(bitmap)
+        val normalizedBitmap = if (rotationDegrees != 0) {
+            ImageUtils.fixRotation(bitmap, rotationDegrees)
+        } else {
+            bitmap
+        }
+
+        val detBoxes = runDetection(normalizedBitmap)
 
         val sortedBoxes = detBoxes.sortedBy { box ->
             val yCenter = (box[1] + box[5]) / 2
@@ -69,7 +75,7 @@ class OnnxOcrEngine(private val context: Context) {
         }
 
         val results = sortedBoxes.mapNotNull { box ->
-            val cropped = cropBitmap(bitmap, box)
+            val cropped = cropBitmap(normalizedBitmap, box)
             if (cropped != null) {
                 val rotated = runClassification(cropped)
                 val (text, conf) = runRecognition(rotated)
