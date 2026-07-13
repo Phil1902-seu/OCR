@@ -2,6 +2,7 @@ package com.rapidocr.app.data.ocr.impl
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtException
@@ -13,6 +14,10 @@ import kotlin.math.max
 import kotlin.math.min
 
 class OnnxOcrEngine(private val context: Context) {
+
+    companion object {
+        private const val TAG = "OnnxOcrEngine"
+    }
 
     private var detSession: OrtSession? = null
     private var recSession: OrtSession? = null
@@ -34,23 +39,62 @@ class OnnxOcrEngine(private val context: Context) {
 
     fun initialize(modelDir: String): Boolean {
         return try {
+            Log.d(TAG, "Starting OCR engine initialization")
+
             dictionary = loadDictionary()
+            Log.d(TAG, "Dictionary loaded: ${dictionary.size} chars")
 
             val detFile = copyAssetToCache("models/PP-OCRv6_det_small.onnx", modelDir)
+            Log.d(TAG, "Det model: ${detFile.absolutePath} (${detFile.length()} bytes)")
+
             val recFile = copyAssetToCache("models/PP-OCRv6_rec_small.onnx", modelDir)
+            Log.d(TAG, "Rec model: ${recFile.absolutePath} (${recFile.length()} bytes)")
+
             val clsFile = copyAssetToCache("models/ch_ppocr_mobile_v2.0_cls_mobile.onnx", modelDir)
+            Log.d(TAG, "Cls model: ${clsFile.absolutePath} (${clsFile.length()} bytes)")
 
             val sessionOptions = OrtSession.SessionOptions().apply {
                 setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
                 setIntraOpNumThreads(4)
             }
 
-            detSession = if (detFile.exists()) ortEnv.createSession(detFile.absolutePath, sessionOptions) else null
-            recSession = if (recFile.exists()) ortEnv.createSession(recFile.absolutePath, sessionOptions) else null
-            clsSession = if (clsFile.exists()) ortEnv.createSession(clsFile.absolutePath, sessionOptions) else null
+            detSession = if (detFile.exists() && detFile.length() > 100) {
+                ortEnv.createSession(detFile.absolutePath, sessionOptions).also {
+                    Log.d(TAG, "Det session created successfully")
+                }
+            } else {
+                Log.e(TAG, "Det model file not available")
+                null
+            }
 
-            detSession != null && recSession != null
+            recSession = if (recFile.exists() && recFile.length() > 100) {
+                ortEnv.createSession(recFile.absolutePath, sessionOptions).also {
+                    Log.d(TAG, "Rec session created successfully")
+                }
+            } else {
+                Log.e(TAG, "Rec model file not available")
+                null
+            }
+
+            clsSession = if (clsFile.exists() && clsFile.length() > 100) {
+                try {
+                    ortEnv.createSession(clsFile.absolutePath, sessionOptions).also {
+                        Log.d(TAG, "Cls session created successfully")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Cls session creation failed (optional): ${e.message}")
+                    null
+                }
+            } else {
+                Log.d(TAG, "Cls model not available (optional)")
+                null
+            }
+
+            val ready = detSession != null && recSession != null
+            Log.d(TAG, "OCR engine initialized: det=${detSession != null}, rec=${recSession != null}, cls=${clsSession != null}, ready=$ready")
+            ready
         } catch (e: Exception) {
+            Log.e(TAG, "OCR engine initialization failed", e)
             false
         }
     }
@@ -391,7 +435,9 @@ class OnnxOcrEngine(private val context: Context) {
                     input.copyTo(output)
                 }
             }
+            Log.d(TAG, "Copied $assetPath -> ${destFile.absolutePath} (${destFile.length()} bytes)")
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy asset: $assetPath", e)
         }
         return destFile
     }

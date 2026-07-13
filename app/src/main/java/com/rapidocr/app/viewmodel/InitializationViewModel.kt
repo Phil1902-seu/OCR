@@ -45,11 +45,11 @@ class InitializationViewModel @Inject constructor(
                     _initState.value = InitState.READY
                 } else {
                     _initState.value = InitState.ERROR
-                    _errorMessage.value = "Failed to initialize OCR engine"
+                    _errorMessage.value = ocrRepository.getLastError() ?: "Unknown error"
                 }
             } catch (e: Exception) {
                 _initState.value = InitState.ERROR
-                _errorMessage.value = e.message ?: "Unknown error"
+                _errorMessage.value = "${e.javaClass.simpleName}: ${e.message}"
             }
         }
     }

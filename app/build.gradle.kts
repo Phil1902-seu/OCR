@@ -95,7 +95,7 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
 
     // iText PDF
     implementation("com.itextpdf:itext7-core:7.2.5")

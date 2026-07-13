@@ -21,27 +21,41 @@ class OcrRepository @Inject constructor(
     suspend fun initialize(): Boolean {
         if (initialized) return true
 
-        val modelType = modelManager.getCurrentModelType()
-        val modelDir = modelManager.copyModelFromAssets(modelType)
-        if (modelDir.isEmpty()) return false
+        try {
+            val modelType = modelManager.getCurrentModelType()
+            val modelDir = modelManager.copyModelFromAssets(modelType)
+            if (modelDir.isEmpty()) {
+                lastError = "Model files could not be prepared. Please check storage."
+                return false
+            }
 
-        val config = when (modelType) {
-            ModelType.SMALL -> OcrConfig()
-            ModelType.STANDARD -> OcrConfig(
-                detectionModel = "PP-OCRv6_det.onnx",
-                classificationModel = "ch_ppocr_mobile_v2.0_cls.onnx",
-                recognitionModel = "PP-OCRv6_rec.onnx"
-            )
-        }
+            val config = when (modelType) {
+                ModelType.SMALL -> OcrConfig()
+                ModelType.STANDARD -> OcrConfig(
+                    detectionModel = "PP-OCRv6_det.onnx",
+                    classificationModel = "ch_ppocr_mobile_v2.0_cls.onnx",
+                    recognitionModel = "PP-OCRv6_rec.onnx"
+                )
+            }
 
-        val initResult = withContext(Dispatchers.IO) {
-            engine.initialize(modelDir, config)
+            val initResult = withContext(Dispatchers.IO) {
+                engine.initialize(modelDir, config)
+            }
+            if (initResult) {
+                initialized = true
+            } else {
+                lastError = "ONNX model loading failed. Check: (1) model files integrity (2) available memory (3) ONNX opset compatibility"
+            }
+            return initResult
+        } catch (e: Exception) {
+            lastError = "Init error: ${e.javaClass.simpleName}: ${e.message}"
+            return false
         }
-        if (initResult) {
-            initialized = true
-        }
-        return initResult
     }
+
+    fun getLastError(): String? = lastError
+
+    private var lastError: String? = null
 
     suspend fun recognize(bitmap: Bitmap): Result<OcrResult> {
         if (!initialized) {
