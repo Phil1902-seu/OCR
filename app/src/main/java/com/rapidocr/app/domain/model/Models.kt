@@ -19,7 +19,8 @@ data class HistoryRecord(
     val thumbnailPath: String,
     val fullText: String,
     val summary: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val ocrMode: String = OcrMode.STANDARD.name
 )
 
 data class ImageMeta(
@@ -28,5 +29,10 @@ data class ImageMeta(
     val format: String
 )
 
-enum class ModelType { SMALL, STANDARD }
+enum class OcrMode {
+    STANDARD,
+    HIGH_ACCURACY,
+    HIGH_ACCURACY_WITH_LOCATION
+}
+
 enum class ExportFormat { TXT, PDF, MARKDOWN, JSON }

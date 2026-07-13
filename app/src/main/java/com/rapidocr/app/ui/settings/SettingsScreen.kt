@@ -6,23 +6,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.rapidocr.app.domain.model.ModelType
+import com.rapidocr.app.domain.model.OcrMode
 import com.rapidocr.app.viewmodel.SettingsViewModel
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel
 ) {
-    val currentModel by viewModel.currentModel.collectAsState()
-    val switchResult by viewModel.switchResult.collectAsState()
+    val apiKey by viewModel.apiKey.collectAsState()
+    val secretKey by viewModel.secretKey.collectAsState()
+    val saveResult by viewModel.saveResult.collectAsState()
+    val testResult by viewModel.testResult.collectAsState()
+    val currentMode by viewModel.currentMode.collectAsState()
 
     Column(
         modifier = Modifier
@@ -36,49 +41,99 @@ fun SettingsScreen(
         )
 
         Text(
-            text = "OCR Model",
+            text = "Baidu Cloud Credentials",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        Text(
-            text = "Current: ${currentModel.name}",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(bottom = 16.dp)
+        OutlinedTextField(
+            value = apiKey,
+            onValueChange = viewModel::updateApiKey,
+            label = { Text("API Key") },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = secretKey,
+            onValueChange = viewModel::updateSecretKey,
+            label = { Text("Secret Key") },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            singleLine = true
         )
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedButton(
-                onClick = { viewModel.switchModel(ModelType.SMALL) },
-                enabled = currentModel != ModelType.SMALL
-            ) {
-                Text("Small (Fast)")
+            Button(onClick = { viewModel.saveCredentials() }) {
+                Text("Save")
             }
-            OutlinedButton(
-                onClick = { viewModel.switchModel(ModelType.STANDARD) },
-                enabled = currentModel != ModelType.STANDARD
-            ) {
-                Text("Standard (Accurate)")
+            OutlinedButton(onClick = { viewModel.testConnection() }) {
+                Text("Test Connection")
             }
         }
 
-        if (switchResult == false) {
-            Text(
-                text = "Failed to switch model",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+        when (saveResult) {
+            true -> Text(
+                "Credentials saved",
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 8.dp)
             )
+            false -> Text(
+                "Failed to save credentials",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            null -> {}
+        }
+
+        when (val t = testResult) {
+            is SettingsViewModel.TestState.Success -> Text(
+                "Connection OK",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            is SettingsViewModel.TestState.Failure -> Text(
+                "Test failed: ${t.message}",
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            is SettingsViewModel.TestState.Testing -> Text(
+                "Testing...",
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            else -> {}
         }
 
         Text(
-            text = "Small model is faster with good accuracy for most use cases. Standard model is slower but provides higher accuracy.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 16.dp)
+            text = "Recognition Mode",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
         )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedButton(
+                onClick = { viewModel.setMode(OcrMode.STANDARD) },
+                enabled = currentMode != OcrMode.STANDARD
+            ) {
+                Text("Standard")
+            }
+            OutlinedButton(
+                onClick = { viewModel.setMode(OcrMode.HIGH_ACCURACY) },
+                enabled = currentMode != OcrMode.HIGH_ACCURACY
+            ) {
+                Text("High Accuracy")
+            }
+            OutlinedButton(
+                onClick = { viewModel.setMode(OcrMode.HIGH_ACCURACY_WITH_LOCATION) },
+                enabled = currentMode != OcrMode.HIGH_ACCURACY_WITH_LOCATION
+            ) {
+                Text("With Location")
+            }
+        }
     }
 }

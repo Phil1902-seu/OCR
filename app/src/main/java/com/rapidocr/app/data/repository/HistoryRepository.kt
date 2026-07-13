@@ -46,7 +46,8 @@ class HistoryRepository @Inject constructor(
         thumbnailPath = thumbnailPath,
         fullText = fullText,
         summary = summary,
-        createdAt = createdAt
+        createdAt = createdAt,
+        ocrMode = ocrMode
     )
 
     private fun HistoryRecord.toEntity() = HistoryEntity(
@@ -54,6 +55,7 @@ class HistoryRepository @Inject constructor(
         thumbnailPath = thumbnailPath,
         fullText = fullText,
         summary = summary,
-        createdAt = createdAt
+        createdAt = createdAt,
+        ocrMode = ocrMode
     )
 }

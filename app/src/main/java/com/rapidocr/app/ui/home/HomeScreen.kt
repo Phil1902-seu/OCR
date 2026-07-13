@@ -1,7 +1,10 @@
 package com.rapidocr.app.ui.home
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +44,7 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val networkAvailable = isNetworkAvailable(context)
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -62,7 +66,7 @@ fun HomeScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = "RapidOCR",
+                text = "PaddleOCR",
                 style = MaterialTheme.typography.headlineLarge,
                 textAlign = TextAlign.Center
             )
@@ -70,7 +74,7 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Offline OCR powered by RapidOCR",
+                text = "Online OCR powered by Baidu PaddleOCR",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -80,6 +84,7 @@ fun HomeScreen(
 
             Button(
                 onClick = { galleryLauncher.launch("image/*") },
+                enabled = networkAvailable,
                 modifier = Modifier.size(width = 240.dp, height = 56.dp)
             ) {
                 Icon(Icons.Default.PhotoLibrary, contentDescription = null)
@@ -91,11 +96,22 @@ fun HomeScreen(
 
             Button(
                 onClick = onNavigateToCamera,
+                enabled = networkAvailable,
                 modifier = Modifier.size(width = 240.dp, height = 56.dp)
             ) {
                 Icon(Icons.Default.CameraAlt, contentDescription = null)
                 Spacer(modifier = Modifier.size(8.dp))
                 Text("Take Photo")
+            }
+
+            if (!networkAvailable) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = "网络不可用，请检查网络连接",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
+                )
             }
         }
 
@@ -112,6 +128,15 @@ fun HomeScreen(
     if (uiState is OcrUiState.Success) {
         onNavigateToResult()
     }
+}
+
+private fun isNetworkAvailable(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    if (cm == null) return true
+    val network = cm.activeNetwork ?: return false
+    val caps = cm.getNetworkCapabilities(network) ?: return false
+    return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }
 
 private fun loadBitmapFromUri(context: android.content.Context, uri: Uri): Bitmap? {

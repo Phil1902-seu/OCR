@@ -29,7 +29,7 @@ object AppModule {
             context,
             AppDatabase::class.java,
             "rapidocr_database"
-        ).build()
+        ).addMigrations(*AppDatabase.MIGRATIONS).build()
     }
 
     @Provides

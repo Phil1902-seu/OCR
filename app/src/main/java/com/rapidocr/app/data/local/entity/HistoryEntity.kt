@@ -3,6 +3,7 @@ package com.rapidocr.app.data.local.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import com.rapidocr.app.domain.model.OcrMode
 
 @Entity(tableName = "history")
 data class HistoryEntity(
@@ -10,5 +11,6 @@ data class HistoryEntity(
     val thumbnailPath: String,
     val fullText: String,
     val summary: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val ocrMode: String = OcrMode.STANDARD.name
 )

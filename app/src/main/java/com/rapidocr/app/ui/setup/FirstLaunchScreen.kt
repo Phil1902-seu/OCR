@@ -1,6 +1,5 @@
 package com.rapidocr.app.ui.setup
 
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,9 +29,8 @@ import com.rapidocr.app.viewmodel.InitializationViewModel
 
 enum class InitState {
     CHECKING,
-    COPYING,
-    LOADING_MODEL,
     READY,
+    NO_CREDENTIAL,
     ERROR
 }
 
@@ -42,13 +40,7 @@ fun FirstLaunchScreen(
     viewModel: InitializationViewModel = hiltViewModel()
 ) {
     val initState by viewModel.initState.collectAsState()
-    val progress by viewModel.progress.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
-
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        label = "progress"
-    )
 
     LaunchedEffect(Unit) {
         viewModel.startInitialization()
@@ -84,7 +76,7 @@ fun FirstLaunchScreen(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    text = "RapidOCR",
+                    text = "PaddleOCR",
                     style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -99,45 +91,45 @@ fun FirstLaunchScreen(
 
                 Spacer(modifier = Modifier.height(48.dp))
 
-                if (initState != InitState.ERROR) {
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = getStatusText(initState),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                } else {
-                    Text(
-                        text = errorMessage ?: "Initialization failed",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(onClick = {
-                        viewModel.startInitialization()
-                    }) {
-                        Text("Retry")
+                when (initState) {
+                    InitState.CHECKING -> {
+                        LinearProgressIndicator(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Checking credentials...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    InitState.NO_CREDENTIAL -> {
+                        Text(
+                            text = "未配置百度智能云 API 凭证，请前往设置页填写后返回重试。",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { viewModel.startInitialization() }) {
+                            Text("Retry")
+                        }
+                    }
+                    else -> {
+                        Text(
+                            text = errorMessage ?: "Initialization failed",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(onClick = { viewModel.startInitialization() }) {
+                            Text("Retry")
+                        }
                     }
                 }
             }
         }
     }
-}
-
-private fun getStatusText(state: InitState): String = when (state) {
-    InitState.CHECKING -> "Checking model files..."
-    InitState.COPYING -> "Copying model files..."
-    InitState.LOADING_MODEL -> "Loading inference engine..."
-    InitState.READY -> "Ready!"
-    InitState.ERROR -> "Error occurred"
 }
