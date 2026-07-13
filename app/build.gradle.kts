@@ -92,6 +92,7 @@ dependencies {
     // Hilt
     implementation("com.google.dagger:hilt-android:2.50")
     kapt("com.google.dagger:hilt-compiler:2.50")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
 
     // ONNX Runtime
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.3")

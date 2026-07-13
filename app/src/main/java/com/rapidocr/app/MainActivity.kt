@@ -7,10 +7,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rapidocr.app.di.ViewModelFactory
 import com.rapidocr.app.ui.navigation.MainNavigation
+import com.rapidocr.app.ui.setup.FirstLaunchScreen
 import com.rapidocr.app.ui.theme.RapidOCRTheme
 import com.rapidocr.app.viewmodel.HistoryViewModel
 import com.rapidocr.app.viewmodel.OcrViewModel
@@ -41,13 +46,21 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun RapidOCRApp(factory: ViewModelFactory) {
+    var isInitialized by remember { mutableStateOf(false) }
+
     val ocrViewModel: OcrViewModel = viewModel(factory = factory)
     val historyViewModel: HistoryViewModel = viewModel(factory = factory)
     val settingsViewModel: SettingsViewModel = viewModel(factory = factory)
 
-    MainNavigation(
-        ocrViewModel = ocrViewModel,
-        historyViewModel = historyViewModel,
-        settingsViewModel = settingsViewModel
-    )
+    if (isInitialized) {
+        MainNavigation(
+            ocrViewModel = ocrViewModel,
+            historyViewModel = historyViewModel,
+            settingsViewModel = settingsViewModel
+        )
+    } else {
+        FirstLaunchScreen(
+            onInitialized = { isInitialized = true }
+        )
+    }
 }
