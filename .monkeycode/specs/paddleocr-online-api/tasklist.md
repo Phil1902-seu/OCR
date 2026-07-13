@@ -88,7 +88,7 @@
   - 运行 `./gradlew assembleDebug` 验证编译通过
   - 运行 `./gradlew test` 验证单元测试通过
 
-- [ ] 15. 更新测试代码
+- [x] 15. 更新测试代码
   - [ ]* 15.1 修改现有测试以适配新架构
     - 删除 `OnnxOcrEngineTest.kt`、`RapidOcrEngineTest.kt`、`ModelManagerTest.kt`、`OcrConfigTest.kt`（对应已删除的类）
     - 修改 `OcrViewModelTest.kt`：适配新增的 OcrMode 参数

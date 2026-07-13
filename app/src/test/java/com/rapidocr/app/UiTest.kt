@@ -1,7 +1,6 @@
 package com.rapidocr.app
 
 import com.rapidocr.app.domain.model.ExportFormat
-import com.rapidocr.app.domain.model.ModelType
 import com.rapidocr.app.domain.model.OcrResult
 import com.rapidocr.app.domain.model.TextBox
 import org.junit.Test
@@ -74,28 +73,8 @@ class HistoryScreenTest {
 
 class SettingsScreenTest {
     @Test
-    fun `default model type is SMALL`() {
-        val default = ModelType.SMALL
-        assertEquals(ModelType.SMALL, default)
-    }
-
-    @Test
-    fun `model switch can fail and keep original`() {
-        var currentModel = ModelType.SMALL
-        val switchSuccess = false
-        if (!switchSuccess) {
-            // Keep original model
-        }
-        assertEquals(ModelType.SMALL, currentModel)
-    }
-
-    @Test
-    fun `model switch to STANDARD`() {
-        var currentModel = ModelType.SMALL
-        val switchSuccess = true
-        if (switchSuccess) {
-            currentModel = ModelType.STANDARD
-        }
-        assertEquals(ModelType.STANDARD, currentModel)
+    fun `default ocr mode is STANDARD`() {
+        val default = com.rapidocr.app.domain.model.OcrMode.STANDARD
+        assertEquals(com.rapidocr.app.domain.model.OcrMode.STANDARD, default)
     }
 }

@@ -1,46 +1,30 @@
 package com.rapidocr.app
 
-import com.rapidocr.app.data.ocr.OcrConfig
-import com.rapidocr.app.data.ocr.RapidOcrEngine
+import com.rapidocr.app.domain.model.OcrMode
 import org.junit.Test
-import kotlin.test.assertNotNull
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class RapidOcrEngineTest {
+class OcrModeTest {
     @Test
-    fun `RapidOcrEngine can be instantiated`() {
-        val clazz = RapidOcrEngine::class.java
-        assertNotNull(clazz)
+    fun `OcrMode has three recognition modes`() {
+        assertEquals(3, OcrMode.values().size)
+        assertTrue(OcrMode.values().contains(OcrMode.STANDARD))
+        assertTrue(OcrMode.values().contains(OcrMode.HIGH_ACCURACY))
+        assertTrue(OcrMode.values().contains(OcrMode.HIGH_ACCURACY_WITH_LOCATION))
     }
 
     @Test
-    fun `RapidOcrEngine has expected methods`() {
-        val clazz = RapidOcrEngine::class.java
-        val methods = clazz.declaredMethods
-        val methodNames = methods.map { it.name }.toSet()
-
-        assertTrue(
-            methodNames.contains("initialize"),
-            "initialize method should exist"
-        )
-        assertTrue(
-            methodNames.contains("recognize"),
-            "recognize method should exist"
-        )
-        assertTrue(
-            methodNames.contains("release"),
-            "release method should exist"
-        )
+    fun `OcrMode names match api contract`() {
+        assertEquals("STANDARD", OcrMode.STANDARD.name)
+        assertEquals("HIGH_ACCURACY", OcrMode.HIGH_ACCURACY.name)
+        assertEquals("HIGH_ACCURACY_WITH_LOCATION", OcrMode.HIGH_ACCURACY_WITH_LOCATION.name)
     }
 
     @Test
-    fun `OcrConfig model is well-formed`() {
-        val config = OcrConfig()
-        assertNotNull(config.detectionModel)
-        assertNotNull(config.classificationModel)
-        assertNotNull(config.recognitionModel)
-        assertTrue(config.detectionModel.endsWith(".onnx"))
-        assertTrue(config.classificationModel.endsWith(".onnx"))
-        assertTrue(config.recognitionModel.endsWith(".onnx"))
+    fun `OcrMode can be parsed from string`() {
+        assertEquals(OcrMode.STANDARD, OcrMode.valueOf("STANDARD"))
+        assertEquals(OcrMode.HIGH_ACCURACY, OcrMode.valueOf("HIGH_ACCURACY"))
+        assertEquals(OcrMode.HIGH_ACCURACY_WITH_LOCATION, OcrMode.valueOf("HIGH_ACCURACY_WITH_LOCATION"))
     }
 }

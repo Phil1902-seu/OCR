@@ -4,7 +4,6 @@ import android.graphics.PointF
 import com.rapidocr.app.domain.model.ExportFormat
 import com.rapidocr.app.domain.model.HistoryRecord
 import com.rapidocr.app.domain.model.ImageMeta
-import com.rapidocr.app.domain.model.ModelType
 import com.rapidocr.app.domain.model.OcrResult
 import com.rapidocr.app.domain.model.TextBox
 import org.junit.Test
@@ -58,13 +57,6 @@ class DomainModelTest {
         assertTrue(formats.contains(ExportFormat.PDF))
         assertTrue(formats.contains(ExportFormat.MARKDOWN))
         assertTrue(formats.contains(ExportFormat.JSON))
-    }
-
-    @Test
-    fun `ModelType has SMALL and STANDARD`() {
-        assertEquals(2, ModelType.values().size)
-        assertNotNull(ModelType.SMALL)
-        assertNotNull(ModelType.STANDARD)
     }
 
     @Test
